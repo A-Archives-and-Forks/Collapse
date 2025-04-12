@@ -1,4 +1,6 @@
 using Hi3Helper.Shared.Region;
+using Hi3Helper.Win32.ManagedTools;
+using Hi3Helper.Win32.Native.LibraryImport;
 using Microsoft.Win32;
 using Sentry;
 using Sentry.Infrastructure;
@@ -33,7 +35,7 @@ namespace Hi3Helper.SentryHelper
         /// <summary>
         /// <inheritdoc cref="SentryOptions.MaxAttachmentSize"/>
         /// </summary>
-        private const long SentryMaxAttachmentSize = 2 * 1024 * 1024; // 2 MB
+        private const long SentryMaxAttachmentSize = 20 * 1024 * 1024; // 20 MB
 
         /// <summary>
         /// Whether to upload log file when exception is caught.
@@ -108,6 +110,31 @@ namespace Hi3Helper.SentryHelper
 
                 _isEnabled = value;
                 LauncherConfig.SetAndSaveConfigValue("SendRemoteCrashData", value);
+            }
+        }
+        
+        private static bool? _isDumpEnabledInner;
+        private static bool _isDumpEnabled
+        {
+            //get => _isDumpEnabledInner ??= LauncherConfig.GetAppConfigValue("DumpMemoryOnUnhandledException").ToBool();
+            get => true;
+        }
+        
+        private static bool? _isUploadDumpInner;
+        private static bool _isUploadDump
+        {
+            //get => _isCreateFullDumpInner ?? LauncherConfig.GetAppConfigValue("UploadDumpOnUnhandledException").ToBool();
+            get => true;
+        }
+        
+        private static bool? _isCreateFullDumpInner;
+        private static bool _isCreateFullDump
+        {
+            get => _isCreateFullDumpInner ??= LauncherConfig.GetAppConfigValue("DumpFullMemory").ToBool();
+            set
+            {
+                _isCreateFullDumpInner = value;
+                LauncherConfig.SetAndSaveConfigValue("DumpFullMemory", value);
             }
         }
 
@@ -470,36 +497,12 @@ namespace Hi3Helper.SentryHelper
 
         #endregion
         
-        private static SentryId ExceptionHandlerInner(Exception ex, ExceptionType exT = ExceptionType.Handled)
+        private static SentryId ExceptionHandlerInner(Exception ex, ExceptionType exT = ExceptionType.Handled, bool isLoop = false)
         {
             SentrySdk.AddBreadcrumb(BuildInfo);
             SentrySdk.AddBreadcrumb(GameInfo);
             SentrySdk.AddBreadcrumb(CpuInfo);
             SentrySdk.AddBreadcrumb(GpuInfo);
-
-            var loadedModules = Process.GetCurrentProcess().Modules;
-            var modulesInfo   = new ConcurrentDictionary<string, string>();
-
-            Parallel.ForEach(loadedModules.Cast<ProcessModule>(), module =>
-            {
-                try
-                {
-                    var name = module.ModuleName;
-                    var ver  = module.FileVersionInfo.FileVersion;
-                    var path = module.FileName;
-                    _ = modulesInfo.TryAdd(name, $"{ver} ({path})");
-                }
-                catch (Exception exI)
-                {
-                    Logger.LogWriteLine($"Failed to get module info: {exI.Message}", LogType.Error, true);
-                }
-            });
-
-            var sbModulesInfo = new StringBuilder();
-            foreach (var (key, value) in modulesInfo)
-            {
-                sbModulesInfo.AppendLine($"{key}: {value}");
-            }
             
             ex.Data[Mechanism.HandledKey] ??= exT == ExceptionType.Handled;
 
@@ -518,6 +521,19 @@ namespace Hi3Helper.SentryHelper
                                                   _ => methodName ?? ex.Source ?? "Application.HandledException"
                                               };
             
+            var isDumpCreated = false;
+            var dumpFileName  = $"Dump-CollapseLauncher-{DateTime.Now:yyyyMMdd-HHmmss}.dmp";
+            var dumpFilePath  = Path.Combine(Path.GetTempPath(), dumpFileName);
+            
+            if (SentryUploadLog && _isDumpEnabled && _isUploadDump)
+            {
+                isDumpCreated = MiniDump.CreateMiniDump(
+                                        dumpFilePath,
+                                        Process.GetCurrentProcess(),
+                                        false,
+                                        ILoggerHelper.GetILogger());
+            }
+            
         #pragma warning disable CS0162 // Unreachable code detected
             if (SentryUploadLog) // Upload log file if enabled
                 // ReSharper disable once HeuristicUnreachableCode
@@ -525,13 +541,21 @@ namespace Hi3Helper.SentryHelper
                 if ((bool)(ex.Data[Mechanism.HandledKey] ?? false))
                     return SentrySdk.CaptureException(ex);
                 else
+                {
+                    // TODO: handle exception
+                    var dumpFileInfo = new FileInfo(dumpFilePath);
                     return SentrySdk.CaptureException(ex, s =>
-                                                   {
-                                                       s.AddAttachment(LoggerBase.LogPath, AttachmentType.Default, "text/plain");
-                                                       s.AddAttachment(new MemoryStream(Encoding.UTF8.GetBytes(sbModulesInfo.ToString())),
-                                                                       "LoadedModules.txt", AttachmentType.Default,
-                                                                       "text/plain");
-                                                   });
+                                                          {
+                                                              s.AddAttachment(LoggerBase.LogPath,
+                                                                              AttachmentType.Default, "text/plain");
+                                                              // Only upload dump file if the size is less than SentryMaxAttachmentSize
+                                                              if (isDumpCreated && 
+                                                                  new FileInfo(LoggerBase.LogPath).Length +
+                                                                  dumpFileInfo.Length <
+                                                                  SentryMaxAttachmentSize)
+                                                                  s.AddAttachment(dumpFilePath, AttachmentType.Minidump);
+                                                          });
+                }
             }
             else
             {
@@ -573,10 +597,42 @@ namespace Hi3Helper.SentryHelper
             SentrySdk.CaptureFeedback(feedback, userEmail, user);
             return true;
         }
+        
+        #region Extras
+        // TODO: Implement generic dump creation
+        // private static (bool isComplete, bool isFullDump, string? filePath) CreateDump(bool? isFullDump)
+        // {
+        //     var dumpFileName = $"Dump-CollapseLauncher-{DateTime.Now:yyyyMMdd-HHmmss}.dmp";
+        //     var dumpFilePath = Path.Combine(Path.GetTempPath(), dumpFileName);
+        //     isFullDump ??= _isCreateFullDump;
+        //
+        //     try
+        //     {
+        //         var res = MiniDump.CreateMiniDump(
+        //                                           dumpFilePath,
+        //                                           Process.GetCurrentProcess(),
+        //                                           (bool)isFullDump,
+        //                                           ILoggerHelper.GetILogger());
+        //         
+        //         if (res)
+        //         {
+        //             return (true, (bool)isFullDump, dumpFilePath);
+        //         }
+        //     }
+        //     catch (Exception e)
+        //     {
+        //         // ignore, logger is already set inside CreateMiniDump method
+        //     }
+        //
+        //     return (false, (bool)isFullDump, null);
+        // }
+        #endregion
 
         [GeneratedRegex(@"(?<=\bat\s)(CollapseLauncher|Hi3Helper)\.[^\s(]+", RegexOptions.Compiled)]
         private static partial Regex ExceptionFrame();
     }
 
         #endregion
+        
+
 }
