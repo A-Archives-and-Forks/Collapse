@@ -41,6 +41,7 @@ using SevenZipExtractor.Event;
 using SharpHDiffPatch.Core;
 using SharpHDiffPatch.Core.Event;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -180,6 +181,7 @@ namespace CollapseLauncher.InstallManager.Base
 
         public void Dispose()
         {
+            _fileLockApplyHDiffMap.Clear();
             _gameRepairTool?.Dispose();
             Token?.Cancel();
             IsRunning = false;
@@ -1716,6 +1718,8 @@ namespace CollapseLauncher.InstallManager.Base
 
             return hDiffMapEntries;
         }
+        
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLockApplyHDiffMap = new();
 
         protected virtual async Task ApplyHDiffMap()
         {
@@ -1773,6 +1777,12 @@ namespace CollapseLauncher.InstallManager.Base
                             ForceUpdateProgress(entry);
                             return;
                         }
+                            
+                        // Grant only one thread access to the file
+                        var fileLock =
+                            _fileLockApplyHDiffMap.GetOrAdd(patchPath.FullName, _ => new SemaphoreSlim(1, 1));
+                        // get lock
+                        await fileLock.WaitAsync(ctx);
 
                         if (!isPatchExist || !isSourceExist)
                         {
@@ -1814,9 +1824,12 @@ namespace CollapseLauncher.InstallManager.Base
                             try
                             {
                                 thisInnerCtx.ThrowIfCancellationRequested();
-                                HDiffPatch patcher = new HDiffPatch();
+                                var patcher = new HDiffPatch();
+                                patchPath.Refresh();
+                                targetPathTemp.Refresh();
                                 patcher.Initialize(patchPath.FullName);
-                                patcher.Patch(sourcePath.FullName, targetPathTemp.FullName, true, thisInnerCtx, false, true);
+                                patcher.Patch(sourcePath.FullName, targetPathTemp.FullName, true, thisInnerCtx, false,
+                                              true);
                                 isSuccess = true;
                             }
                             catch (InvalidDataException ex) when (!thisInnerCtx.IsCancellationRequested)
@@ -1832,7 +1845,12 @@ namespace CollapseLauncher.InstallManager.Base
 
                                 // Otherwise, log the error
                                 SentryHelper.ExceptionHandler(ex, SentryHelper.ExceptionType.UnhandledOther);
-                                LogWriteLine($"New: {newFileSize} == Ref: {refFileSize}. File is already new. Skipping! {targetPath.FullName}", LogType.Warning, true);
+                                LogWriteLine($"New: {newFileSize} == Ref: {refFileSize}. File is already new. Skipping! {targetPath.FullName}",
+                                             LogType.Warning, true);
+                            }
+                            finally
+                            {
+                                fileLock.Release();
                             }
                         },
                         ctx,
