@@ -20,7 +20,7 @@
         <LangVersion>preview</LangVersion>
         <!-- Target Settings -->
         <Platforms>x64</Platforms>
-        <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+        <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
         <WindowsSdkPackageVersion>10.0.26100.57</WindowsSdkPackageVersion>
         <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -171,9 +171,9 @@
         <PackageReference Include="Clowd.Squirrel" Version="2.11.1" Condition="!$(DefineConstants.Contains('USEVELOPACK'))" />
         <PackageReference Include="Libsql.Client" Version="0.5.0" />
         <!-- Velopacks' outdated dependencies, remove this once they switched to .NET 9 -->
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.5" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0-preview.5.25277.114" />
         <!-- Velopacks' outdated dependencies, remove this once they switched to .NET 9 -->
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.5" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-preview.5.25277.114" />
         <PackageReference Include="TurnerSoftware.DinoDNS" Version="0.3.0" />
         <PackageReference Include="Velopack" Version="0.0.1297" Condition="$(DefineConstants.Contains('USEVELOPACK'))" />
 
@@ -209,9 +209,9 @@
         <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
         <PackageReference Include="System.CommandLine.NamingConventionBinder" Version="2.0.0-beta4.22272.1" />
         <PackageReference Include="System.Security.AccessControl" Version="6.0.1" />
-        <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.5" />
-        <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.5" />
-        <PackageReference Include="System.Text.Json" Version="9.0.5" />
+        <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0-preview.5.25277.114" />
+        <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.0-preview.5.25277.114" />
+        <PackageReference Include="System.Text.Json" Version="10.0.0-preview.5.25277.114" />
     </ItemGroup>
 
     <ItemGroup>
