@@ -7,7 +7,7 @@ on:
   push:
     branches:
         - 'main'
-        - 'net-10-exper'
+        - 'dotnet-bump/net-10-exper'
     paths-ignore:
         - '**.md'
         - 'Hi3Helper.Core/Lang/**.json'
