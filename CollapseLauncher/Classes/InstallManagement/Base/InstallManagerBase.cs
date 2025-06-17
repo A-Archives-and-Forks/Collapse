@@ -1603,10 +1603,10 @@ namespace CollapseLauncher.InstallManager.Base
                                                                      ? FileOptions.DeleteOnClose
                                                                      : FileOptions.None
                                                              });
-                    while (!sw.EndOfStream)
+                    while (await sw.ReadLineAsync(innerToken) is {} line)
                     {
-                        string   deleteFile = GetBasePersistentDirectory(GamePath, await sw.ReadLineAsync(innerToken));
-                        FileInfo fileInfo   = new FileInfo(deleteFile);
+                        var deleteFile = GetBasePersistentDirectory(GamePath, line);
+                        var fileInfo   = new FileInfo(deleteFile);
                         yield return fileInfo;
                     }
                 }

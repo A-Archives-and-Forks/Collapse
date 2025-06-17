@@ -264,18 +264,16 @@ namespace CollapseLauncher.Helper
             {
                 // Start the applet and wait until it exit.
                 process.Start();
-                while (!process.StandardOutput.EndOfStream)
+
+                while (await process.StandardOutput.ReadLineAsync() is { } procConsoleStdOut)
                 {
-                    string? consoleStdOut = await process.StandardOutput.ReadLineAsync();
-                    Logger.LogWriteLine("[TaskScheduler] " + consoleStdOut, LogType.Debug, true);
+                    Logger.LogWriteLine("[TaskScheduler] " + procConsoleStdOut, LogType.Debug, true);
 
                     // Parse if it has RETURNVAL_
-                    if (consoleStdOut == null || !consoleStdOut.StartsWith(retValMark))
-                    {
+                    if (!procConsoleStdOut.StartsWith(retValMark))
                         continue;
-                    }
 
-                    ReadOnlySpan<char> span = consoleStdOut.AsSpan(retValMark.Length);
+                    ReadOnlySpan<char> span = procConsoleStdOut.AsSpan(retValMark.Length);
                     if (int.TryParse(span, null, out int resultReturnCode))
                     {
                         lastErrCode = resultReturnCode;

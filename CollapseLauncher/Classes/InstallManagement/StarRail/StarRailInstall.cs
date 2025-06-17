@@ -164,11 +164,11 @@ namespace CollapseLauncher.InstallManager.StarRail
             // Assign path to reader
             using StreamReader reader = new StreamReader(path, true);
             // Do loop until EOF
-            while (!reader.EndOfStream)
+            while (await reader.ReadLineAsync(token) is { } line)
             {
                 // Read line and deserialize
-                string? line = await reader.ReadLineAsync(token);
-                LocalFileInfo? localFileInfo = line?.Deserialize(LocalFileInfoJsonContext.Default.LocalFileInfo);
+                //string? line = await reader.ReadLineAsync(token);
+                var localFileInfo = line.Deserialize(LocalFileInfoJsonContext.Default.LocalFileInfo);
 
                 // Assign the values
                 if (localFileInfo == null)
@@ -184,33 +184,31 @@ namespace CollapseLauncher.InstallManager.StarRail
 
                 // If it's an audio file, then add the mark file into the entry as well.
                 // This to avoid the mark file to be tagged as "Unused" (as per issue #672)
-                if (localFileInfo.RelativePath.EndsWith(".pck"))
+                if (!localFileInfo.RelativePath.EndsWith(".pck"))
+                    continue;
+
+                // Get the string of the mark hex hash
+                var markHashString = HexTool.BytesToHexUnsafe(localFileInfo.MD5Hash);
+                if (string.IsNullOrEmpty(markHashString))
+                    continue;
+
+                // Get the mark file's relative path
+                var relativePathDir        = Path.GetDirectoryName(localFileInfo.RelativePath) ?? "";
+                var relativePathNameNoExt  = Path.GetFileNameWithoutExtension(localFileInfo.RelativePath);
+                var relativePathMarkMerged = Path.Combine(relativePathDir, relativePathNameNoExt + $"_{markHashString}.hash");
+
+                // Create the LocalFileInfo instance of the mark file
+                var localFileInfoMark = new LocalFileInfo
                 {
-                    // Get the string of the mark hex hash
-                    string? markHashString = HexTool.BytesToHexUnsafe(localFileInfo.MD5Hash);
-                    if (string.IsNullOrEmpty(markHashString))
-                    {
-                        continue;
-                    }
+                    FullPath     = Path.Combine(gamePath, relativePathMarkMerged),
+                    RelativePath = relativePathMarkMerged,
+                    FileName     = Path.GetFileName(relativePathMarkMerged)
+                };
+                localFileInfoMark.IsFileExist = File.Exists(localFileInfoMark.FullPath);
 
-                    // Get the mark file's relative path
-                    string relativePathDir = Path.GetDirectoryName(localFileInfo.RelativePath) ?? "";
-                    string relativePathNameNoExt = Path.GetFileNameWithoutExtension(localFileInfo.RelativePath);
-                    string relativePathMarkMerged = Path.Combine(relativePathDir, relativePathNameNoExt + $"_{markHashString}.hash");
-
-                    // Create the LocalFileInfo instance of the mark file
-                    LocalFileInfo localFileInfoMark = new LocalFileInfo
-                    {
-                        FullPath = Path.Combine(gamePath, relativePathMarkMerged),
-                        RelativePath = relativePathMarkMerged,
-                        FileName = Path.GetFileName(relativePathMarkMerged)
-                    };
-                    localFileInfoMark.IsFileExist = File.Exists(localFileInfoMark.FullPath);
-
-                    // Add the mark file entry into the list and hashset
-                    pkgFileInfo.Add(localFileInfoMark);
-                    pkgFileInfoHashSet.Add(localFileInfoMark.RelativePath);
-                }
+                // Add the mark file entry into the list and hashset
+                pkgFileInfo.Add(localFileInfoMark);
+                pkgFileInfoHashSet.Add(localFileInfoMark.RelativePath);
             }
         }
 #nullable restore
